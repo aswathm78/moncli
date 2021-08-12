@@ -147,7 +147,10 @@ class DateType(MondayType):
         if self._null_value_change(value, COMPLEX_NULL_VALUE):
             return True
         for k, v in value.items():
-            if self.original_value[k] != v:
+            try:
+                if self.original_value[k] != v:
+                    return True
+            except KeyError:
                 return True
         return False
 
@@ -165,7 +168,12 @@ class DropdownType(MondayType):
             return value
 
         super(DropdownType, self).to_native(value, context)
-        labels = value.text.split(', ')
+
+        try:
+            labels = value.text.split(', ')
+        except:
+            return None
+
         if not self._data_mapping:
             return labels
         try:
@@ -205,6 +213,10 @@ class DropdownType(MondayType):
 
 
 class ItemLinkType(MondayType):
+
+    def __init__(self, id: str = None, title: str = None, multiple_values: bool = True, *args, **kwargs):
+        super().__init__(id=id, title=title, *args, **kwargs)
+        self.metadata['allowMultipleItems'] = multiple_values 
 
     def to_native(self, value, context = None):
         if not self._is_column_value(value):
@@ -288,17 +300,34 @@ class MirrorType(MondayType):
         super().__init__(id=id, title=title, *args, **kwargs)
 
     def to_native(self, value, context):
-        self._get_monday_type.to_native(value, context)
+        if not self._is_column_value(value):
+            return value
+
+        super().to_native(value, context)
+        if self._type is NumberType:
+            value.value = value.text
+            return self._get_monday_type().to_native(value, context)
+        elif value.value == COMPLEX_NULL_VALUE:
+            return self.default
+        
 
     def to_primitive(self, value, context):
-       self._get_monday_type.to_primitive(value, context)
+       self._get_monday_type().to_primitive(value, context)
 
     def value_changed(self, value):
         return False
 
     def _get_monday_type(self):
         mirrored_type = getattr(importlib.import_module(self._type.__module__), self._type.__name__)
-        return mirrored_type(id=self.id, title=self.title)
+        try:
+            id = self.metadata['id']
+        except:
+            id = None
+        try:
+            title = self.metadata['title']
+        except:
+            title = None
+        return mirrored_type(id=id, title=title)
 
 
 class NumberType(MondayType):
@@ -386,14 +415,14 @@ class PeopleType(MondayType):
         if max_people_allowed > 0 and len(value) > max_people_allowed:
             raise ValidationError('Value exceeds the maximum number of allowed people: ({}).'.format(len(value)))
         for v in value:
-            if not self._is_person_or_team(value):
+            if not self._is_person_or_team(v):
                 raise ValidationError('Value contains a record with an invalid type: ({})'.format(v.__class__.__name__))
 
     def value_changed(self, value):
         if self._null_value_change(value, COMPLEX_NULL_VALUE):
             return True
         old = self.original_value['personsAndTeams']
-        new = value['perosnsAndTeams']
+        new = value['personsAndTeams']
         if len(old) != len(new):
             return True
         for i in range(len(old)):
@@ -547,7 +576,7 @@ class WeekType(MondayType):
                 week_value['startDate'], DATE_FORMAT), 
                 datetime.strptime(week_value['startDate'], DATE_FORMAT))
         except:
-            raise MondayTypeError(message='Invalid data for week type: ({})'.format(value))
+            return None
 
     def to_primitive(self, value, context = None):
         if not value:
