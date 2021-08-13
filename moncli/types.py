@@ -1,5 +1,6 @@
 import json, pytz, importlib
 from datetime import datetime, timedelta
+from enum import Enum
 
 from schematics.exceptions import ValidationError
 from schematics.types import BaseType
@@ -69,6 +70,7 @@ class MondayType(BaseType):
     def to_primitive(self, value, context=None):
         if not self.null_value:
             return None
+        return self._export(value)
 
     def value_changed(self, value):
         if self._null_value_change(value):
@@ -112,21 +114,22 @@ class CheckboxType(MondayComplexType):
 
     native_type = bool
     primitive_type = dict
+    allow_casts = (str, int)
 
-    def to_native(self, value, context = None):
-        if not self._is_column_value(value):
-            return value
-        value = super().to_native(value, context=context)
+    def _convert(self, value: tuple):
+        _, value, _ = value
         try:
             return bool(value['checked'])
         except:
             return False
 
-    def to_primitive(self, value, context = None):
-        if not value: return {}
+    def _export(self, value):
+        if not value: return self.null_value
         return {'checked': 'true'}
 
     def validate_checkbox(self, value):
+        if isinstance(value, self.allow_casts):
+            value = self._cast(value)
         if type(value) is not bool:
             raise ValidationError('Value is not a valid checkbox type: ({}).'.format(value))
 
@@ -202,24 +205,23 @@ class DropdownType(MondayComplexType):
 
     native_type = list
     primitive_type = dict
-    allow_casts = (str,)
+    allow_casts = (str, Enum)
 
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
-        self._data_mapping = data_mapping
-        super(DropdownType, self).__init__(id=id, title=title, *args, **kwargs)
+        if data_mapping:
+            self._data_mapping = data_mapping
+            self.choices = data_mapping.values()
+        super(DropdownType, self).__init__(id=id, title=title, *args, default=[], **kwargs)
 
-    def to_native(self, value, context = None):
-        if type(value) is str:
-            value = [value]
-        if not self._is_column_value(value):
-            return value
+    def _cast(self, value):
+        return [value]
 
-        super(DropdownType, self).to_native(value, context)
-
+    def _convert(self, value: tuple):
+        text, _, _ = value
         try:
-            labels = value.text.split(', ')
+            labels = text.split(', ')
         except:
-            return None
+            return self.default
 
         if not self._data_mapping:
             self.choices = labels
@@ -227,9 +229,9 @@ class DropdownType(MondayComplexType):
         try:
             return [self._data_mapping[text] for text in labels]
         except:
-            return None
+            return self.default
 
-    def to_primitive(self, value, context = None):
+    def _export(self, value):
         if self._data_mapping:
             reverse = {v: k for k, v in self._data_mapping.items()}
             value = [reverse[label] for label in value]
