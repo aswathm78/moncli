@@ -50,6 +50,7 @@ class MondayModel(Model):
                         column = columns[field_type.metadata['id']]
                     except:
                         continue
+                field_type.original_value = None  # Clear out any stale original values.
                 field_type.metadata['id'] = column.id
                 field_type.metadata['title'] = column.title
                 settings = json.loads(column.settings_str)
