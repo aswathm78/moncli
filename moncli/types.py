@@ -61,11 +61,11 @@ class MondayType(BaseType):
         except:
             return None
 
-    def _null_value_change(self, value, null_value: str):
-        if self.original_value in [None, COMPLEX_NULL_VALUE]:
-            return value != COMPLEX_NULL_VALUE
-        elif value == COMPLEX_NULL_VALUE:
-            return self.original_value != COMPLEX_NULL_VALUE
+    def _null_value_change(self, value, null_value: str = COMPLEX_NULL_VALUE):
+        if self.original_value in [None, null_value]:
+            return value != null_value
+        elif value == null_value:
+            return self.original_value != null_value
 
 
 class CheckboxType(MondayType):
