@@ -13,7 +13,7 @@ SIMPLE_NULL_VALUE = ''
 COMPLEX_NULL_VALUE = {}
 DATE_FORMAT = '%Y-%m-%d'
 TIME_FORMAT = '%H:%M:%S'
-CHANGED_AT_FORMAT = '{}T{}.%fZ'.format(DATE_FORMAT, TIME_FORMAT)
+ZULU_FORMAT = '{}T{}.%fZ'.format(DATE_FORMAT, TIME_FORMAT)
 
 
 class MondayType(BaseType):
@@ -33,6 +33,16 @@ class MondayType(BaseType):
 
         super(MondayType, self).__init__(*args, metadata=metadata, **kwargs)
 
+    @property
+    def changed_at(self):
+        value = self.metadata.get('changed_at', None)
+        if not value:
+            return None
+        changed_at = datetime.strptime(value, ZULU_FORMAT)
+        utc = pytz.timezone('UTC')
+        changed_at = utc.localize(changed_at, is_dst=False)
+        return changed_at.astimezone(datetime.now().astimezone().tzinfo)
+
     def to_native(self, value, context=None): 
         self.metadata['id'] = value.id
         self.metadata['title'] = value.title
@@ -41,7 +51,7 @@ class MondayType(BaseType):
             self.metadata[k] = v
         self.original_value = json.loads(value.value)
         try:
-            self.metadata['changed_at'] = self._get_local_changed_at(self.original_value['changed_at'])
+            self.metadata['changed_at'] = self.original_value.pop('changed_at', None)
         except:
             pass
         return self.original_value
@@ -53,15 +63,6 @@ class MondayType(BaseType):
 
     def _is_column_value(self, value):
         return isinstance(value, cv.ColumnValue)
-
-    def _get_local_changed_at(self, changed_at_str: str):
-        try:
-            changed_at = datetime.strptime(changed_at_str, CHANGED_AT_FORMAT)
-            utc = pytz.timezone('UTC')
-            changed_at = utc.localize(changed_at, is_dst=False)
-            return changed_at.astimezone(datetime.now().astimezone().tzinfo)
-        except:
-            return None
 
     def _null_value_change(self, value):
         if self.original_value in [None, self.null_value]:
