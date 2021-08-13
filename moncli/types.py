@@ -250,6 +250,9 @@ class ItemLinkType(MondayType):
                 raise ValidationError('Item link property requires a list value for multiple items.')
 
     def value_changed(self, value):
+        # Handle case if only one link allowed and is null.
+        if value == None:
+            value = COMPLEX_NULL_VALUE
         if self._null_value_change(value, COMPLEX_NULL_VALUE):
             return True
         if not self._allow_multiple_values():
@@ -305,7 +308,7 @@ class MirrorType(MondayType):
 
         super().to_native(value, context)
         if self._type is NumberType:
-            value.value = value.text
+            value.value = json.dumps(value.text)
             return self._get_monday_type().to_native(value, context)
         elif value.value == COMPLEX_NULL_VALUE:
             return self.default
