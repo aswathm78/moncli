@@ -18,6 +18,8 @@ CHANGED_AT_FORMAT = '{}T{}.%fZ'.format(DATE_FORMAT, TIME_FORMAT)
 
 class MondayType(BaseType):
 
+    null_value = None
+
     def __init__(self, id: str = None, title: str = None, *args, **kwargs):
         self.original_value = None
         metadata = {}
@@ -70,6 +72,8 @@ class MondayType(BaseType):
 
 class CheckboxType(MondayType):
 
+    null_value = COMPLEX_NULL_VALUE
+
     def to_native(self, value, context = None):
         if not self._is_column_value(value):
             return value
@@ -102,6 +106,8 @@ class CheckboxType(MondayType):
 
 
 class DateType(MondayType):
+
+    null_value = COMPLEX_NULL_VALUE
 
     def to_native(self, value, context):
         if not self._is_column_value(value):
@@ -156,6 +162,8 @@ class DateType(MondayType):
 
 
 class DropdownType(MondayType):
+
+    null_value = COMPLEX_NULL_VALUE
 
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
         self._data_mapping = data_mapping
@@ -213,6 +221,8 @@ class DropdownType(MondayType):
 
 
 class ItemLinkType(MondayType):
+
+    null_value = COMPLEX_NULL_VALUE
 
     def __init__(self, id: str = None, title: str = None, multiple_values: bool = True, *args, **kwargs):
         super().__init__(id=id, title=title, *args, **kwargs)
@@ -273,6 +283,8 @@ class ItemLinkType(MondayType):
 
 class LongTextType(MondayType):
 
+    null_value = COMPLEX_NULL_VALUE
+
     def to_native(self, value, context):
         if not self._is_column_value(value):
             return value
@@ -297,6 +309,8 @@ class LongTextType(MondayType):
 
 
 class MirrorType(MondayType):
+
+    null_value = COMPLEX_NULL_VALUE
     
     def __init__(self, _type: MondayType, id: str = None, title: str = None, *args, **kwargs):
         self._type = _type
@@ -312,7 +326,6 @@ class MirrorType(MondayType):
             return self._get_monday_type().to_native(value, context)
         elif value.value == COMPLEX_NULL_VALUE:
             return self.default
-        
 
     def to_primitive(self, value, context):
        self._get_monday_type().to_primitive(value, context)
@@ -334,6 +347,8 @@ class MirrorType(MondayType):
 
 
 class NumberType(MondayType):
+
+    null_value = SIMPLE_NULL_VALUE
 
     def to_native(self, value, context):
         if not self._is_column_value(value):
@@ -378,8 +393,9 @@ class NumberType(MondayType):
         return a == b
 
 
-
 class PeopleType(MondayType):
+
+    null_value = COMPLEX_NULL_VALUE
 
     def to_native(self, value, context):
         result = []
@@ -439,6 +455,8 @@ class PeopleType(MondayType):
 
 class StatusType(MondayType):
 
+    null_value = COMPLEX_NULL_VALUE
+
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
         self._data_mapping = data_mapping
         super(StatusType, self).__init__(id=id, title=title, *args, **kwargs)
@@ -477,6 +495,8 @@ class StatusType(MondayType):
 
 
 class SubitemsType(MondayType):
+
+    null_value = COMPLEX_NULL_VALUE
 
     def __init__(self, _type: MondayModel, id: str = None, title: str = None, *args, **kwargs):
         if not issubclass(_type, MondayModel):
@@ -518,6 +538,8 @@ class SubitemsType(MondayType):
 
 class TextType(MondayType):
 
+    null_value = SIMPLE_NULL_VALUE
+
     def to_native(self, value, context = None):
         if not self._is_column_value(value):
             return value
@@ -534,6 +556,8 @@ class TextType(MondayType):
 
 
 class TimelineType(MondayType):
+
+    null_value = COMPLEX_NULL_VALUE
 
     def to_native(self, value, context):
         if isinstance(value, Timeline):
@@ -566,6 +590,8 @@ class TimelineType(MondayType):
 
     
 class WeekType(MondayType):
+
+    null_value = COMPLEX_NULL_VALUE
 
     def to_native(self, value, context):
         if isinstance(value, Week):
