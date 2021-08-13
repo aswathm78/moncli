@@ -63,11 +63,11 @@ class MondayType(BaseType):
         except:
             return None
 
-    def _null_value_change(self, value, null_value: str = COMPLEX_NULL_VALUE):
-        if self.original_value in [None, null_value]:
-            return value != null_value
-        elif value == null_value:
-            return self.original_value != null_value
+    def _null_value_change(self, value):
+        if self.original_value in [None, self.null_value]:
+            return value != self.null_value
+        elif value == self.null_value:
+            return self.original_value != self.null_value
 
 
 class CheckboxType(MondayType):
@@ -94,7 +94,7 @@ class CheckboxType(MondayType):
             raise ValidationError('Value is not a valid checkbox type: ({}).'.format(value))
 
     def value_changed(self, value):
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+        if self._null_value_change(value):
             return True
         try:
             orig = bool(self.original_value['checked'])
@@ -154,7 +154,7 @@ class DateType(MondayType):
             raise ValidationError('Invalid datetime type.')
 
     def value_changed(self, value):
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+        if self._null_value_change(value):
             return True
         for k, v in value.items():
             try:
@@ -215,7 +215,7 @@ class DropdownType(MondayType):
                 raise ValidationError('Unable to find index for status label: ({}).'.format(value))
 
     def value_changed(self, value):
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+        if self._null_value_change(value):
             return True
         if len(value) != len(self.original_value):
             return True
@@ -271,8 +271,8 @@ class ItemLinkType(MondayType):
     def value_changed(self, value):
         # Handle case if only one link allowed and is null.
         if value == None:
-            value = COMPLEX_NULL_VALUE
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+            value = self.null_value
+        if self._null_value_change(value):
             return True
         if not self._allow_multiple_values():
             return value['item_ids'] != self.original_value
@@ -300,13 +300,13 @@ class LongTextType(MondayType):
         if not self._is_column_value(value):
             return value
         value = super().to_native(value, context=context)
-        if value == COMPLEX_NULL_VALUE:
+        if value == self.null_value:
             return None
         return value['text']
 
     def to_primitive(self, value, context = None):
         if not value: 
-            return COMPLEX_NULL_VALUE
+            return self.null_value
         return {'text': value}
 
     def validate_text(self, value):
@@ -314,7 +314,7 @@ class LongTextType(MondayType):
             raise ValidationError('Value is not a valid long text type: ({}).'.format(value))
 
     def value_changed(self, value):
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+        if self._null_value_change(value):
             return True
         return self.original_value['text'] != value['text']
 
@@ -335,7 +335,7 @@ class MirrorType(MondayType):
         if self._type is NumberType:
             value.value = json.dumps(value.text)
             return self._get_monday_type().to_native(value, context)
-        elif value.value == COMPLEX_NULL_VALUE:
+        elif value.value == self.null_value:
             return self.default
 
     def to_primitive(self, value, context):
@@ -440,7 +440,7 @@ class PeopleType(MondayType):
         except:
             max_people_allowed = 0
         self.metadata['max_people_allowed'] = max_people_allowed
-        if value == COMPLEX_NULL_VALUE:
+        if value == self.null_value:
             return result
 
         for v in value['personsAndTeams']:
@@ -452,7 +452,7 @@ class PeopleType(MondayType):
 
     def to_primitive(self, value, context = None):
         if not value:
-            return COMPLEX_NULL_VALUE
+            return self.null_value
         if type(value) is not list:
             value = [value]
         return {'personsAndTeams': [{'id': v.id, 'kind': v.kind.name} for v in value]}
@@ -470,7 +470,7 @@ class PeopleType(MondayType):
                 raise ValidationError('Value contains a record with an invalid type: ({})'.format(v.__class__.__name__))
 
     def value_changed(self, value):
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+        if self._null_value_change(value):
             return True
         old = self.original_value['personsAndTeams']
         new = value['personsAndTeams']
@@ -526,7 +526,7 @@ class StatusType(MondayType):
             raise ValidationError('Unable to find index for status label: ({}).'.format(value))
 
     def value_changed(self, value):
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+        if self._null_value_change(value):
             return True
         return self.original_value['index'] != value['index']
 
@@ -546,7 +546,7 @@ class SubitemsType(MondayType):
         if not self._is_column_value(value):
             return value
         value = super().to_native(value, context)
-        if value == COMPLEX_NULL_VALUE:
+        if value == self.null_value:
             return []
         
         item_ids = [item['linkedPulseId'] for item in value['linkedPulseIds']]
@@ -627,7 +627,7 @@ class TimelineType(MondayType):
 
     def to_primitive(self, value, context = None):
         if not value:
-            return COMPLEX_NULL_VALUE
+            return self.null_value
         return {
             'from': datetime.strftime(value.from_date, DATE_FORMAT),
             'to': datetime.strftime(value.to_date, DATE_FORMAT)
@@ -698,6 +698,8 @@ class WeekType(MondayType):
         value = super(WeekType, self).to_native(value, context=context)
         try:
             week_value = value['week']
+            if week_value == '':
+                return self.native_type()
             return self.native_type(datetime.strptime(
                 week_value['startDate'], DATE_FORMAT), 
                 datetime.strptime(week_value['startDate'], DATE_FORMAT))
@@ -706,7 +708,7 @@ class WeekType(MondayType):
 
     def to_primitive(self, value, context = None):
         if not value:
-            return COMPLEX_NULL_VALUE
+            return self.null_value
         
         return { 
             'week': {
@@ -724,7 +726,7 @@ class WeekType(MondayType):
             raise ValidationError('Value is mssing an end date: ({}).'.format(value))
             
     def value_changed(self, value):
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+        if self._null_value_change(value):
             return True
         orig_week = self.original_value['week']
         new_week = value['week']
