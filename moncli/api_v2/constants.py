@@ -1,4 +1,4 @@
-from .graphql import ArgumentValueKind
+from .graphql import ArgumentValueKind, JsonValue
 
 ## Operation methods
 
@@ -297,7 +297,7 @@ DELETE_SUBSCRIBERS_FROM_BOARD_OPTIONAL_PARAMS = {
 }
 
 CREATE_COLUMN_OPTIONAL_PARAMS = {
-
+    'defaults': ArgumentValueKind.Json
 }
 
 CHANGE_COLUMN_VALUE_OPTIONAL_PARAMS = {
