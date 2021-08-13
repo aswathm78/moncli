@@ -73,6 +73,8 @@ class MondayType(BaseType):
 class CheckboxType(MondayType):
 
     null_value = COMPLEX_NULL_VALUE
+    native_type = bool
+    primitive_type = dict
 
     def to_native(self, value, context = None):
         if not self._is_column_value(value):
@@ -108,6 +110,8 @@ class CheckboxType(MondayType):
 class DateType(MondayType):
 
     null_value = COMPLEX_NULL_VALUE
+    native_type = datetime
+    primitive_type = dict
 
     def to_native(self, value, context):
         if not self._is_column_value(value):
@@ -164,6 +168,8 @@ class DateType(MondayType):
 class DropdownType(MondayType):
 
     null_value = COMPLEX_NULL_VALUE
+    native_type = list
+    primitive_type = dict
 
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
         self._data_mapping = data_mapping
@@ -219,13 +225,16 @@ class DropdownType(MondayType):
         return False
         
 
-
 class ItemLinkType(MondayType):
 
     null_value = COMPLEX_NULL_VALUE
+    native_type = list
+    primitive_type = dict
 
     def __init__(self, id: str = None, title: str = None, multiple_values: bool = True, *args, **kwargs):
         super().__init__(id=id, title=title, *args, **kwargs)
+        if not multiple_values:
+            self.native_type = str
         self.metadata['allowMultipleItems'] = multiple_values 
 
     def to_native(self, value, context = None):
@@ -284,6 +293,8 @@ class ItemLinkType(MondayType):
 class LongTextType(MondayType):
 
     null_value = COMPLEX_NULL_VALUE
+    native_type = str
+    primitive_type = dict
 
     def to_native(self, value, context):
         if not self._is_column_value(value):
@@ -349,6 +360,7 @@ class MirrorType(MondayType):
 class NumberType(MondayType):
 
     null_value = SIMPLE_NULL_VALUE
+    primitive_type = str
 
     def to_native(self, value, context):
         if not self._is_column_value(value):
@@ -357,8 +369,10 @@ class NumberType(MondayType):
         if value == SIMPLE_NULL_VALUE:
             return None
         if self._isint(value):
+            self.native_type = int
             return int(value)
         if self._isfloat(value):
+            self.native_type = float
             return float(value)
 
     def to_primitive(self, value, context = None):
@@ -395,7 +409,25 @@ class NumberType(MondayType):
 
 class PeopleType(MondayType):
 
+    class PersonOrTeam():
+
+        def __init__(self, id: str, kind: PeopleKind):
+            self.id = id
+            self.kind = kind
+
+    class Person(PersonOrTeam):
+
+        def __init__(self, id: str):
+            super().__init__(id, PeopleKind.person)
+
+    class Team(PersonOrTeam):
+
+        def __init__(self, id: str):
+            super().__init__(id, PeopleKind.team)
+
     null_value = COMPLEX_NULL_VALUE
+    native_type = list
+    primitive_type = dict
 
     def to_native(self, value, context):
         result = []
@@ -413,7 +445,7 @@ class PeopleType(MondayType):
 
         for v in value['personsAndTeams']:
             kind = PeopleKind[v['kind']]
-            result.append(PersonOrTeam(v['id'], kind))
+            result.append(self.PersonOrTeam(v['id'], kind))
         if max_people_allowed == 1:
             return result[0]
         return result
@@ -450,15 +482,20 @@ class PeopleType(MondayType):
         return False
 
     def _is_person_or_team(self, value):
-        return isinstance(value, PersonOrTeam) or issubclass(type(value), PersonOrTeam)
+        return isinstance(value, self.PersonOrTeam) or issubclass(type(value), self.PersonOrTeam)
 
 
 class StatusType(MondayType):
 
     null_value = COMPLEX_NULL_VALUE
+    native_type = str
+    primitive_type = dict
 
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
+        if data_mapping:
+            self.native_type = data_mapping.values()[0].__class__
         self._data_mapping = data_mapping
+        
         super(StatusType, self).__init__(id=id, title=title, *args, **kwargs)
 
     def to_native(self, value, context = None):
@@ -497,6 +534,7 @@ class StatusType(MondayType):
 class SubitemsType(MondayType):
 
     null_value = COMPLEX_NULL_VALUE
+    native_type = list
 
     def __init__(self, _type: MondayModel, id: str = None, title: str = None, *args, **kwargs):
         if not issubclass(_type, MondayModel):
@@ -539,6 +577,8 @@ class SubitemsType(MondayType):
 class TextType(MondayType):
 
     null_value = SIMPLE_NULL_VALUE
+    native_type = str
+    primitive_type = str
 
     def to_native(self, value, context = None):
         if not self._is_column_value(value):
@@ -555,16 +595,31 @@ class TextType(MondayType):
             raise ValidationError('Value is not a valid text type: ({}).'.format(value))
 
 
+
 class TimelineType(MondayType):
 
+    class Timeline():
+
+        def __init__(self, from_date = None, to_date = None):
+            self.from_date = from_date
+            self.to_date = to_date
+
+        def __repr__(self):
+            return str({
+                'from': datetime.strftime(self.from_date, DATE_FORMAT),
+                'to': datetime.strftime(self.to_date, DATE_FORMAT)
+            })
+
     null_value = COMPLEX_NULL_VALUE
+    native_type = Timeline
+    primitive_type = dict
 
     def to_native(self, value, context):
-        if isinstance(value, Timeline):
+        if isinstance(value, self.native_type):
             return value
         value = super().to_native(value, context=context)
         try:
-            return Timeline(
+            return self.native_type(
                 datetime.strptime(value['from'], DATE_FORMAT),
                 datetime.strptime(value['to'], DATE_FORMAT))
         except:
@@ -579,7 +634,7 @@ class TimelineType(MondayType):
         }
 
     def validate_timeline(self, value):
-        if type(value) is not Timeline:
+        if type(value) is not self.native_type:
             raise ValidationError('Value is not a valid timeline type: ({}).'.format(value))
 
     def value_changed(self, value):
@@ -591,17 +646,59 @@ class TimelineType(MondayType):
     
 class WeekType(MondayType):
 
+    class Week():
+
+        def __init__(self, start = None, end = None):
+            self._start = start
+            self._end = end
+            self._calculate_dates(start)
+
+        @property
+        def start(self):
+            return self._start
+
+        @start.setter
+        def start(self, value):
+            self._calculate_dates(value)
+
+        @property
+        def end(self):
+            return self._end
+
+        @end.setter
+        def end(self, value):
+            return self._calculate_dates(value)
+
+        @property
+        def week_number(self):
+            return self._week_number
+
+        def _calculate_dates(self, value):
+            if not value:
+                return value   
+            self._start = value - timedelta(days=value.weekday())
+            self._end = self._start + timedelta(days=6)
+            self._week_number = self._start.isocalendar()[1]
+
+        def __repr__(self):
+            return str({
+                'startDate': self._start,
+                'endDate': self._end
+            })
+
     null_value = COMPLEX_NULL_VALUE
+    native_type = Week
+    primitive_type = dict
 
     def to_native(self, value, context):
-        if isinstance(value, Week):
+        if isinstance(value, self.native_type):
             return value
         if type(value) is dict:
-            return Week(value['start'], value['end'])
+            return self.native_type(value['start'], value['end'])
         value = super(WeekType, self).to_native(value, context=context)
         try:
             week_value = value['week']
-            return Week(datetime.strptime(
+            return self.native_type(datetime.strptime(
                 week_value['startDate'], DATE_FORMAT), 
                 datetime.strptime(week_value['startDate'], DATE_FORMAT))
         except:
@@ -619,7 +716,7 @@ class WeekType(MondayType):
         }
 
     def validate_week(self, value):
-        if type(value) is not Week:
+        if type(value) is not self.native_type:
             raise ValidationError('Value is not a valid week type: ({}).'.format(value))
         if not value.start:
             raise ValidationError('Value is mssing a start date: ({}).'.format(value))
@@ -638,86 +735,6 @@ class WeekType(MondayType):
                 return True
         return False
 
-
-class Timeline():
-
-    def __init__(self, from_date = None, to_date = None):
-        self.from_date = from_date
-        self.to_date = to_date
-
-    def __repr__(self):
-        return str({
-            'from': datetime.strftime(self.from_date, DATE_FORMAT),
-            'to': datetime.strftime(self.to_date, DATE_FORMAT)
-        })
-
-
-class Week():
-
-    def __init__(self, start = None, end = None):
-        self._start = start
-        self._end = end
-        self._calculate_dates(start)
-
-    @property
-    def start(self):
-        return self._start
-
-    @start.setter
-    def start(self, value):
-        self._calculate_dates(value)
-
-    @property
-    def end(self):
-        return self._end
-
-    @end.setter
-    def end(self, value):
-        return self._calculate_dates(value)
-
-    @property
-    def week_number(self):
-        return self._week_number
-
-    def _calculate_dates(self, value):
-        if not value:
-            return value   
-        self._start = value - timedelta(days=value.weekday())
-        self._end = self._start + timedelta(days=6)
-        self._week_number = self._start.isocalendar()[1]
-
-    def __repr__(self):
-        return str({
-            'startDate': self._start,
-            'endDate': self._end
-        })
-
-
-class PersonOrTeam():
-
-    def __init__(self, id: str, kind: PeopleKind):
-        self._id = id
-        self._kind = kind
-
-    @property
-    def id(self):
-        return self._id
-
-    @property
-    def kind(self):
-        return self._kind
-
-
-class Person(PersonOrTeam):
-
-    def __init__(self, id: str):
-        super(Person, self).__init__(id, PeopleKind.person)
-
-
-class Team(PersonOrTeam):
-
-    def __init__(self, id: str):
-        super(Team, self).__init__(id, PeopleKind.team)
 
 class MondayTypeError(Exception):
     def __init__(self, message: str = None, messages: dict = None, error_code: str = None):
