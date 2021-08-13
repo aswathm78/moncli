@@ -9,8 +9,6 @@ from .entities import column_value as cv
 from .enums import PeopleKind
 from .models import MondayModel
 
-SIMPLE_NULL_VALUE = ''
-COMPLEX_NULL_VALUE = {}
 DATE_FORMAT = '%Y-%m-%d'
 TIME_FORMAT = '%H:%M:%S'
 ZULU_FORMAT = '{}T{}.%fZ'.format(DATE_FORMAT, TIME_FORMAT)
@@ -19,6 +17,7 @@ ZULU_FORMAT = '{}T{}.%fZ'.format(DATE_FORMAT, TIME_FORMAT)
 class MondayType(BaseType):
 
     null_value = None
+    allow_casts = ()
 
     def __init__(self, id: str = None, title: str = None, *args, **kwargs):
         self.original_value = None
@@ -43,26 +42,54 @@ class MondayType(BaseType):
         changed_at = utc.localize(changed_at, is_dst=False)
         return changed_at.astimezone(datetime.now().astimezone().tzinfo)
 
-    def to_native(self, value, context=None): 
+    def to_native(self, value, context=None):
+        if not value:
+            return value
+
+        if not isinstance(value, cv.ColumnValue):
+            if self.allow_casts and isinstance(value, self.allow_casts):
+                return self._cast(value)
+            return value
+
         self.metadata['id'] = value.id
         self.metadata['title'] = value.title
         settings = json.loads(value.settings_str) if value.settings_str else {}
         for k, v in settings.items():
             self.metadata[k] = v
-        self.original_value = json.loads(value.value)
+
+        loaded_value = json.loads(value.value)
+        self._extract_metadata(loaded_value)
         try:
-            self.metadata['changed_at'] = self.original_value.pop('changed_at', None)
+            additional_info = json.loads(value.additional_info)
         except:
-            pass
+            additional_info = value.additional_info
+        self.original_value = self._convert((value.text, loaded_value, additional_info))
         return self.original_value
 
+    def to_primitive(self, value, context=None):
+        if not self.null_value:
+            return None
+
     def value_changed(self, value):
-        if self._null_value_change(value, COMPLEX_NULL_VALUE):
+        if self._null_value_change(value):
             return True
         return value != self.original_value
 
-    def _is_column_value(self, value):
-        return isinstance(value, cv.ColumnValue)
+    def _cast(self, value):
+        return self.native_type(value)
+
+    def _extract_metadata(self, value):
+        try:
+            self.metadata['changed_at'] = value.pop('changed_at', None)
+        except:
+            pass
+
+    def _convert(self, value: tuple):
+        _, data, _ = value
+        return data
+
+    def _export(self, value):
+        return value
 
     def _null_value_change(self, value):
         if self.original_value in [None, self.null_value]:
@@ -71,9 +98,18 @@ class MondayType(BaseType):
             return self.original_value != self.null_value
 
 
-class CheckboxType(MondayType):
+class MondaySimpleType(MondayType):
 
-    null_value = COMPLEX_NULL_VALUE
+    null_value = ''
+
+
+class MondayComplexType(MondayType):
+
+    null_value = '{}'
+
+
+class CheckboxType(MondayComplexType):
+
     native_type = bool
     primitive_type = dict
 
@@ -108,17 +144,13 @@ class CheckboxType(MondayType):
         return orig != new
 
 
-class DateType(MondayType):
+class DateType(MondayComplexType):
 
-    null_value = COMPLEX_NULL_VALUE
     native_type = datetime
     primitive_type = dict
 
-    def to_native(self, value, context):
-        if not self._is_column_value(value):
-            return value
-        value = super().to_native(value, context=context)
-
+    def _convert(self, value: tuple):
+        _, value, _ = value
         try:
             date = datetime.strptime(value['date'], DATE_FORMAT) 
         except:
@@ -135,7 +167,7 @@ class DateType(MondayType):
 
         return date
 
-    def to_primitive(self, value, context=None):
+    def _export(self, value):
         # Verify if time value exists before utc conversion.
         time = datetime.strftime(value, TIME_FORMAT)
         if time == '00:00:00':
@@ -151,7 +183,7 @@ class DateType(MondayType):
         }
 
     def validate_date(self, value):
-        if not isinstance(value, datetime):
+        if not isinstance(value, self.native_type):
             raise ValidationError('Invalid datetime type.')
 
     def value_changed(self, value):
@@ -166,11 +198,11 @@ class DateType(MondayType):
         return False
 
 
-class DropdownType(MondayType):
+class DropdownType(MondayComplexType):
 
-    null_value = COMPLEX_NULL_VALUE
     native_type = list
     primitive_type = dict
+    allow_casts = (str,)
 
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
         self._data_mapping = data_mapping
@@ -190,6 +222,7 @@ class DropdownType(MondayType):
             return None
 
         if not self._data_mapping:
+            self.choices = labels
             return labels
         try:
             return [self._data_mapping[text] for text in labels]
@@ -226,9 +259,20 @@ class DropdownType(MondayType):
         return False
         
 
-class ItemLinkType(MondayType):
+class EmailType(MondayComplexType):
 
-    null_value = COMPLEX_NULL_VALUE
+    class Email():
+
+        def __init__(self, email: str, text: str):
+            self.email = email
+            self.text = text
+
+    native_type = Email
+    primitive_type = dict
+
+
+class ItemLinkType(MondayComplexType):
+
     native_type = list
     primitive_type = dict
 
@@ -291,9 +335,8 @@ class ItemLinkType(MondayType):
             return True
 
 
-class LongTextType(MondayType):
+class LongTextType(MondayComplexType):
 
-    null_value = COMPLEX_NULL_VALUE
     native_type = str
     primitive_type = dict
 
@@ -320,9 +363,7 @@ class LongTextType(MondayType):
         return self.original_value['text'] != value['text']
 
 
-class MirrorType(MondayType):
-
-    null_value = COMPLEX_NULL_VALUE
+class MirrorType(MondayComplexType):
     
     def __init__(self, _type: MondayType, id: str = None, title: str = None, *args, **kwargs):
         self._type = _type
@@ -358,16 +399,15 @@ class MirrorType(MondayType):
         return mirrored_type(id=id, title=title)
 
 
-class NumberType(MondayType):
+class NumberType(MondaySimpleType):
 
-    null_value = SIMPLE_NULL_VALUE
     primitive_type = str
 
     def to_native(self, value, context):
         if not self._is_column_value(value):
             return value
         value = super().to_native(value, context=context)
-        if value == SIMPLE_NULL_VALUE:
+        if value == self.null_value:
             return None
         if self._isint(value):
             self.native_type = int
@@ -378,7 +418,7 @@ class NumberType(MondayType):
 
     def to_primitive(self, value, context = None):
         if not value:
-            return SIMPLE_NULL_VALUE
+            return self.null_value
         return str(value)
 
     def validate_number(self, value):
@@ -386,7 +426,7 @@ class NumberType(MondayType):
             raise ValidationError('Value is not a valid number type: ({}).'.format(value))
 
     def value_changed(self, value):
-        if self._null_value_change(value, SIMPLE_NULL_VALUE):
+        if self._null_value_change(value, self.null_value):
             return True
         return value != self.original_value
 
@@ -408,7 +448,7 @@ class NumberType(MondayType):
         return a == b
 
 
-class PeopleType(MondayType):
+class PeopleType(MondayComplexType):
 
     class PersonOrTeam():
 
@@ -426,7 +466,6 @@ class PeopleType(MondayType):
         def __init__(self, id: str):
             super().__init__(id, PeopleKind.team)
 
-    null_value = COMPLEX_NULL_VALUE
     native_type = list
     primitive_type = dict
 
@@ -486,9 +525,8 @@ class PeopleType(MondayType):
         return isinstance(value, self.PersonOrTeam) or issubclass(type(value), self.PersonOrTeam)
 
 
-class StatusType(MondayType):
+class StatusType(MondayComplexType):
 
-    null_value = COMPLEX_NULL_VALUE
     native_type = str
     primitive_type = dict
 
@@ -532,9 +570,8 @@ class StatusType(MondayType):
         return self.original_value['index'] != value['index']
 
 
-class SubitemsType(MondayType):
+class SubitemsType(MondayComplexType):
 
-    null_value = COMPLEX_NULL_VALUE
     native_type = list
 
     def __init__(self, _type: MondayModel, id: str = None, title: str = None, *args, **kwargs):
@@ -568,16 +605,12 @@ class SubitemsType(MondayType):
             if not isinstance(val, self.type):
                 raise ValidationError('Value is not a valid instance of subitem type: ({}).'.format(value.__class__.__name__))
 
-    def to_primitive(self, value, context = None):
-        return value
-
     def value_changed(self, value):
         return False
 
 
-class TextType(MondayType):
+class TextType(MondaySimpleType):
 
-    null_value = SIMPLE_NULL_VALUE
     native_type = str
     primitive_type = str
 
@@ -597,7 +630,7 @@ class TextType(MondayType):
 
 
 
-class TimelineType(MondayType):
+class TimelineType(MondayComplexType):
 
     class Timeline():
 
@@ -611,7 +644,6 @@ class TimelineType(MondayType):
                 'to': datetime.strftime(self.to_date, DATE_FORMAT)
             })
 
-    null_value = COMPLEX_NULL_VALUE
     native_type = Timeline
     primitive_type = dict
 
@@ -645,7 +677,7 @@ class TimelineType(MondayType):
         return False
 
     
-class WeekType(MondayType):
+class WeekType(MondayComplexType):
 
     class Week():
 
@@ -687,7 +719,6 @@ class WeekType(MondayType):
                 'endDate': self._end
             })
 
-    null_value = COMPLEX_NULL_VALUE
     native_type = Week
     primitive_type = dict
 
@@ -696,7 +727,7 @@ class WeekType(MondayType):
             return value
         if type(value) is dict:
             return self.native_type(value['start'], value['end'])
-        value = super(WeekType, self).to_native(value, context=context)
+        value = super().to_native(value, context=context)
         try:
             week_value = value['week']
             if week_value == '':
@@ -743,6 +774,6 @@ class MondayTypeError(Exception):
     def __init__(self, message: str = None, messages: dict = None, error_code: str = None):
         self.error_code = error_code
         if message:
-            super(MondayTypeError, self).__init__(message)
+            super().__init__(message)
         elif messages:
-            super(MondayTypeError, self).__init__(messages)
+            super().__init__(messages)
