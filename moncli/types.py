@@ -276,6 +276,16 @@ class EmailType(MondayComplexType):
     native_type = Email
     primitive_type = dict
 
+    def validate_email(self, value):
+        if not isinstance(value, self.Email):
+            raise ValidationError('Expected value of type "Email", received "{}" instead.'.format(value.__class__.__name__))
+        regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        if not value.email and not re.fullmatch(regex, value.email):
+            raise ValidationError('Email.email cannot be null or an invalid email.')
+        
+    def value_changed(self, value):
+        pass
+
     def _convert(self, value):
         _, value, _ = value
         if value == self.null_value:
@@ -291,16 +301,6 @@ class EmailType(MondayComplexType):
             'email': self.email,
             'text': self.text
         }
-
-    def validate_email(self, value):
-        if not isinstance(value, self.Email):
-            raise ValidationError('Expected value of type "Email", received "{}" instead.'.format(value.__class__.__name__))
-        regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-        if not value.email and not re.fullmatch(regex, value.email):
-            raise ValidationError('Email.email cannot be null or an invalid email.')
-        
-    def value_changed(self, value):
-        pass
 
 
 class ItemLinkType(MondayComplexType):
