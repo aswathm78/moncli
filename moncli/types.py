@@ -1,7 +1,9 @@
 import json, pytz, importlib, re
+import pytz
 from datetime import datetime, timedelta
 from enum import Enum
 
+from pycountry import countries
 from schematics.exceptions import ValidationError
 from schematics.types import BaseType
 
@@ -74,10 +76,10 @@ class MondayType(BaseType):
             return self.null_value
         return self._export(value)
 
-    def value_changed(self, value):
-        if self._null_value_change(value):
+    def value_changed(self, value, other):
+        if (value and not other) or (other and not value):
             return True
-        return value != self.original_value
+        return self._compare(value, other)
 
     def _cast(self, value):
         return self.native_type(value)
@@ -95,11 +97,8 @@ class MondayType(BaseType):
     def _export(self, value):
         return value
 
-    def _null_value_change(self, value):
-        if self.original_value in [None, self.null_value]:
-            return value != self.null_value
-        elif value == self.null_value:
-            return self.original_value != self.null_value
+    def _compare(self, value, other):
+        return value != other
 
 
 class MondaySimpleType(MondayType):
@@ -110,6 +109,16 @@ class MondaySimpleType(MondayType):
 class MondayComplexType(MondayType):
 
     null_value = '{}'
+
+class ComplexTypeValue():
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+        for k, v in self.__dict__.items():
+            if v != getattr(other, k):
+                return False
+        return True
 
 
 class CheckboxType(MondayComplexType):
@@ -280,7 +289,7 @@ class EmailType(MondayComplexType):
         if not isinstance(value, self.Email):
             raise ValidationError('Expected value of type "Email", received "{}" instead.'.format(value.__class__.__name__))
         regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-        if not value.email and not re.fullmatch(regex, value.email):
+        if value.email and not re.fullmatch(regex, value.email):
             raise ValidationError('Email.email cannot be null or an invalid email.')
         
     def value_changed(self, value):
@@ -550,6 +559,36 @@ class PeopleType(MondayComplexType):
 
     def _is_person_or_team(self, value):
         return isinstance(value, self.PersonOrTeam) or issubclass(type(value), self.PersonOrTeam)
+
+
+class PhoneType(MondayComplexType):
+
+    class Phone(ComplexTypeValue):
+
+        def __init__(self, phone: str = None, country: str = None):
+            self.phone = phone
+            self.country = country
+
+    native_type = Phone
+    primitive_type = dict
+
+    def validate_phone(self, value):
+        country = countries.get(alpha_2=value.country)
+        if not country:
+            raise ValidationError('Invalid country code: "{}".'.format(value.country))
+
+    def _convert(self, value: tuple):
+        _, value, _ = value
+        if value == self.null_value:
+            return self.native_type()
+        return self.native_type(
+            value['phone'],
+            value['countryShortName'])
+
+    def _export(self, value):
+        if value.phone and value.country:
+            return { 'phone': self.phone, 'countryShortName': self.country }
+        return { 'phone': '', 'countryShortName': '' }
 
 
 class StatusType(MondayComplexType):
