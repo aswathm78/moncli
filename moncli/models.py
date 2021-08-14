@@ -63,9 +63,9 @@ class MondayModel(Model):
 
         for field, _type in self._fields.items():
             if has_original:
-                self._original_values[k] = getattr(self, field)
+                self._original_values[field] = getattr(self, field)
             else:
-                self._original_values[k] = _type.default
+                self._original_values[field] = _type.default
 
 
     @property

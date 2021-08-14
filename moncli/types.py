@@ -70,7 +70,7 @@ class MondayType(BaseType):
         return self.original_value
 
     def to_primitive(self, value, context=None):
-        if not self.null_value:
+        if self.null_value == None:
             return None
         if not value:
             return self.null_value
@@ -108,7 +108,7 @@ class MondaySimpleType(MondayType):
 
 class MondayComplexType(MondayType):
 
-    null_value = '{}'
+    null_value = {}
 
 class ComplexTypeValue():
 
@@ -123,6 +123,9 @@ class ComplexTypeValue():
 
 class CheckboxType(MondayComplexType):
 
+    def __init__(self, id: str = None, title: str = None, *args, **kwargs):
+        super().__init__(id=id, title=title, default=False, *args, **kwargs)
+
     native_type = bool
     primitive_type = dict
     allow_casts = (str, int)
@@ -135,7 +138,6 @@ class CheckboxType(MondayComplexType):
             return False
 
     def _export(self, value):
-        if not value: return self.null_value
         return {'checked': 'true'}
 
     def validate_checkbox(self, value):
@@ -143,19 +145,6 @@ class CheckboxType(MondayComplexType):
             value = self._cast(value)
         if type(value) is not bool:
             raise ValidationError('Value is not a valid checkbox type: ({}).'.format(value))
-
-    def value_changed(self, value):
-        if self._null_value_change(value):
-            return True
-        try:
-            orig = bool(self.original_value['checked'])
-        except: 
-            orig = False
-        try:
-            new = bool(value['checked'])
-        except:
-            new = False
-        return orig != new
 
 
 class CountryType(MondayComplexType):
