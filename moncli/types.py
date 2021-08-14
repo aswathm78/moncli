@@ -110,6 +110,7 @@ class MondayComplexType(MondayType):
 
     null_value = {}
 
+
 class ComplexTypeValue():
 
     def __eq__(self, other):
@@ -226,17 +227,6 @@ class DateType(MondayComplexType):
         if not isinstance(value, self.native_type):
             raise ValidationError('Invalid datetime type.')
 
-    def value_changed(self, value):
-        if self._null_value_change(value):
-            return True
-        for k, v in value.items():
-            try:
-                if self.original_value[k] != v:
-                    return True
-            except KeyError:
-                return True
-        return False
-
 
 class DropdownType(MondayComplexType):
 
@@ -286,16 +276,6 @@ class DropdownType(MondayComplexType):
         for label in value:
             if label not in labels:
                 raise ValidationError('Unable to find index for status label: ({}).'.format(value))
-
-    def value_changed(self, value):
-        if self._null_value_change(value):
-            return True
-        if len(value) != len(self.original_value):
-            return True
-        for v in value:
-            if v not in self.original_value:
-                return True
-        return False
         
 
 class EmailType(MondayComplexType):
@@ -354,27 +334,12 @@ class ItemLinkType(MondayComplexType):
         return self.metadata['allowMultipleValues']
 
     def validate_itemlink(self, value):
-        if not self._allow_multiple_values():
+        if not self.multiple_values:
             if value != None and type(value) == list:
                 raise ValidationError('Multiple items for this item link property are not supported.')
         else:
             if value and type(value) != list:
                 raise ValidationError('Item link property requires a list value for multiple items.')
-
-    def value_changed(self, value):
-        # Handle case if only one link allowed and is null.
-        if value == None:
-            value = self.null_value
-        if self._null_value_change(value):
-            return True
-        if not self.self.multiple_values:
-            return value['item_ids'] != self.original_value
-        if len(value['item_ids']) != len(self.original_value):
-            return False
-        for v in value['item_ids']:
-            if v not in self.original_value:
-                return False
-        return True
 
     def _convert(self, value: tuple):
         _, value, _ = value
@@ -397,6 +362,16 @@ class ItemLinkType(MondayComplexType):
         if type(value) is not list:
             return {'item_ids': [int(value)]}
         return {'item_ids': [int(val) for val in value]}
+
+    def _compare(self, value, other):
+        if not self.multiple_values:
+            return super()._compare(value, other)
+        if len(value) != len(other):
+            return False
+        for val in value:
+            if val not in other:
+                return False
+        return True
 
 
 class LongTextType(MondayComplexType):
@@ -464,11 +439,21 @@ class MirrorType(MondayComplexType):
 class NumberType(MondaySimpleType):
 
     primitive_type = str
+    allow_casts = (str,)
 
-    def to_native(self, value, context):
-        if not self._is_column_value(value):
-            return value
-        value = super().to_native(value, context=context)
+    def validate_number(self, value):
+        if isinstance(value, (int, float)):
+            return
+        elif isinstance(value, self.allow_casts):
+            try:
+                self.native_type(value)
+                return
+            except:
+                pass
+        raise ValidationError('Value is not a valid number type: ({}).'.format(value))
+
+    def _convert(self, value, context):
+        _, value, _ = value
         if value == self.null_value:
             return None
         if self._isint(value):
@@ -478,19 +463,10 @@ class NumberType(MondaySimpleType):
             self.native_type = float
             return float(value)
 
-    def to_primitive(self, value, context = None):
+    def _export(self, value):
         if not value:
             return self.null_value
         return str(value)
-
-    def validate_number(self, value):
-        if type(value) not in [int, float]:
-            raise ValidationError('Value is not a valid number type: ({}).'.format(value))
-
-    def value_changed(self, value):
-        if self._null_value_change(value, self.null_value):
-            return True
-        return value != self.original_value
 
     def _isfloat(self, value):
         """Is the value a float."""
@@ -517,6 +493,12 @@ class PeopleType(MondayComplexType):
         def __init__(self, id: str, kind: PeopleKind):
             self.id = id
             self.kind = kind
+
+        
+        def __repr__(self):
+            return str({
+                'id': self.id,
+                'kind': self.kind})
 
     class Person(PersonOrTeam):
 
@@ -594,6 +576,11 @@ class PhoneType(MondayComplexType):
         def __init__(self, phone: str = None, country: str = None):
             self.phone = phone
             self.country = country
+
+        def __repr__(self):
+            return str({
+                'phone': self.phone,
+                'countryShortName': self.country})
 
     native_type = Phone
     primitive_type = dict
@@ -724,7 +711,7 @@ class TextType(MondaySimpleType):
 
 class TimelineType(MondayComplexType):
 
-    class Timeline():
+    class Timeline(ComplexTypeValue):
 
         def __init__(self, from_date = None, to_date = None):
             self.from_date = from_date
@@ -762,16 +749,10 @@ class TimelineType(MondayComplexType):
         if type(value) is not self.native_type:
             raise ValidationError('Value is not a valid timeline type: ({}).'.format(value))
 
-    def value_changed(self, value):
-        for k in value.keys():
-            if value[k] != self.original_value[k]:
-                return True
-        return False
-
     
 class WeekType(MondayComplexType):
 
-    class Week():
+    class Week(ComplexTypeValue):
 
         def __init__(self, start = None, end = None):
             self._start = start
