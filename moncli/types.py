@@ -158,6 +158,43 @@ class CheckboxType(MondayComplexType):
         return orig != new
 
 
+class CountryType(MondayComplexType):
+
+    class Country(ComplexTypeValue):
+
+        def __init__(self, name, code):
+            self.name = name
+            self.code = code
+
+    native_type = Country
+    primitive_type = dict
+
+    def validate_country(self, value):
+        if value.code:
+            country = countries.get(alpha_2=value.code)
+            if not country:
+                raise ValidationError('Invalid country code: "{}".'.format(value.code))
+        if value.name:
+            country = countries.get(name=value.name)
+            if not country:
+                raise ValidationError('Invalid country name: "{}".'.format(value.code))
+
+    def _convert(self, value: tuple):
+        _, value, _ = value
+        if value == self.null_value:
+            return self.native_type()
+        return self.Country(
+            value['countryName'],
+            value['countryCode'])
+
+    def _export(self, value):
+        if value.code and value.name:
+            return {
+                'countryCode': value.code,
+                'countryName': value.name
+            }
+        return self.null_value
+
 class DateType(MondayComplexType):
 
     native_type = datetime
