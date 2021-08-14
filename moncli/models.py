@@ -13,6 +13,9 @@ class MondayModel(Model):
         self._board = board
         self._module = self.__module__
         self._class = self.__class__.__name__
+        self._original_values = {}
+
+        has_original = False
 
         if item:
             self.id = item.id
@@ -31,6 +34,7 @@ class MondayModel(Model):
                     except:
                         # Otherwise, it's not work the trouble...
                         continue
+            has_original = True
         elif raw_data:
             self.id = raw_data.pop('id', None)
             self.name = raw_data.pop('name', None)
@@ -57,6 +61,12 @@ class MondayModel(Model):
                 for k, v in settings.items():
                     field_type.metadata[k] = v
 
+        for field, _type in self._fields.items():
+            if has_original:
+                self._original_values[k] = getattr(self, field)
+            else:
+                self._original_values[k] = _type.default
+
 
     @property
     def item(self):
@@ -68,7 +78,7 @@ class MondayModel(Model):
 
         for field, value in base_dict.items():
             model_field = self._fields[field]
-            if diff_only and not model_field.value_changed(value):
+            if diff_only and not model_field.value_changed(getattr(self, field), self._original_values[field]):
                 continue
             try:
                 result[model_field.metadata['id']] = value
