@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 
 from pycountry import countries
-from schematics.exceptions import ValidationError
+from schematics.exceptions import ConversionError, ValidationError
 from schematics.types import BaseType
 
 from . import client
@@ -27,7 +27,7 @@ class MondayType(BaseType):
         metadata = {}
 
         if not id and not title:
-            raise MondayTypeError('"id" or "title" parameter is required.')
+            raise TypeError('"id" or "title" parameter is required.')
         if id:
             metadata['id'] = id
         if title:
@@ -240,6 +240,15 @@ class DropdownType(MondayComplexType):
             self.choices = data_mapping.values()
         super(DropdownType, self).__init__(id=id, title=title, *args, default=[], **kwargs)
 
+    def validate_dropdown(self, value):
+        if self._data_mapping:
+            reverse = {v: k for k, v in self._data_mapping.items()}
+            value = [reverse[label] for label in value]
+        labels = [label['name'] for label in self.metadata['labels']]
+        for label in value:
+            if label not in labels:
+                raise ValidationError('Unable to find index for status label: ({}).'.format(value))
+
     def _cast(self, value):
         return [value]
 
@@ -267,15 +276,6 @@ class DropdownType(MondayComplexType):
             if value == label['name'] or label['name'] in value:
                 ids.append(label['id'])
         return {'ids': ids}
-        
-    def validate_dropdown(self, value):
-        if self._data_mapping:
-            reverse = {v: k for k, v in self._data_mapping.items()}
-            value = [reverse[label] for label in value]
-        labels = [label['name'] for label in self.metadata['labels']]
-        for label in value:
-            if label not in labels:
-                raise ValidationError('Unable to find index for status label: ({}).'.format(value))
         
 
 class EmailType(MondayComplexType):
@@ -420,7 +420,7 @@ class MirrorType(MondayComplexType):
     def to_primitive(self, value, context):
        self._get_monday_type().to_primitive(value, context)
 
-    def value_changed(self, value):
+    def _compare(self, value, other):
         return False
 
     def _get_monday_type(self):
@@ -553,18 +553,6 @@ class PeopleType(MondayComplexType):
             if not self._is_person_or_team(v):
                 raise ValidationError('Value contains a record with an invalid type: ({})'.format(v.__class__.__name__))
 
-    def value_changed(self, value):
-        if self._null_value_change(value):
-            return True
-        old = self.original_value['personsAndTeams']
-        new = value['personsAndTeams']
-        if len(old) != len(new):
-            return True
-        for i in range(len(old)):
-            if old[i]['id'] != new[i]['id']:
-                return True
-        return False
-
     def _is_person_or_team(self, value):
         return isinstance(value, self.PersonOrTeam) or issubclass(type(value), self.PersonOrTeam)
 
@@ -643,55 +631,38 @@ class StatusType(MondayComplexType):
         if value not in self.metadata['labels'].values():
             raise ValidationError('Unable to find index for status label: ({}).'.format(value))
 
-    def value_changed(self, value):
-        if self._null_value_change(value):
-            return True
-        return self.original_value['index'] != value['index']
 
+class SubitemsType(ItemLinkType):
 
-class SubitemsType(MondayComplexType):
-
-    native_type = list
+    null_value = None
 
     def __init__(self, _type: MondayModel, id: str = None, title: str = None, *args, **kwargs):
         if not issubclass(_type, MondayModel):
-            raise MondayTypeError('The input class type is not a Monday Model: ({})'.format(_type.__name__))
+            raise TypeError('The input class type is not a Monday Model: ({})'.format(_type.__name__))
         self.type = _type
-        super(SubitemsType, self).__init__(id, title, *args, **kwargs)
+        super(SubitemsType, self).__init__(id, title, *args, default=[], **kwargs)
 
-    def to_native(self, value, context = None):
-        if not self._is_column_value(value):
-            return value
-        value = super().to_native(value, context)
-        if value == self.null_value:
-            return []
-        
-        item_ids = [item['linkedPulseId'] for item in value['linkedPulseIds']]
-        self.original_value = {'item_ids': item_ids}
+    def _convert(self, value):
+        item_ids = super()._convert(value)
+        if not item_ids:
+            return self.default
+
         items = client.get_items(ids=item_ids, get_column_values=True)
-        
-        value = []
         module = importlib.import_module(self.type.__module__)
-        for item in items:
-            value.append(getattr(module, self.type.__name__)(item))
-
-        return value
+        return [getattr(module, self.type.__name__)(item) for item in items]
 
     def validate_subitems(self, value):
-        if type(value) is not list:
-            raise ValidationError('Value is not a valid subitems list: ({}).'.format(value))
-        for val in value:
-            if not isinstance(val, self.type):
-                raise ValidationError('Value is not a valid instance of subitem type: ({}).'.format(value.__class__.__name__))
+        return # Nothing to validate here...
 
-    def value_changed(self, value):
-        return False
+    def _compare(self, value, other):
+        return False # Nothing to compare here...
 
 
 class TextType(MondaySimpleType):
 
     native_type = str
     primitive_type = str
+    allow_casts = (int, float, bytes)
 
     def to_native(self, value, context = None):
         if not self._is_column_value(value):
@@ -726,16 +697,17 @@ class TimelineType(MondayComplexType):
     native_type = Timeline
     primitive_type = dict
 
-    def to_native(self, value, context):
-        if isinstance(value, self.native_type):
-            return value
-        value = super().to_native(value, context=context)
+    def _convert(self, value, context):
+        _, value, _ = value
+        if value == self.null_value:
+            return self.native_type()
+
         try:
             return self.native_type(
                 datetime.strptime(value['from'], DATE_FORMAT),
                 datetime.strptime(value['to'], DATE_FORMAT))
         except:
-            raise MondayTypeError(message='Invalid data for timeline type: ({}).'.format(value))
+            raise ConversionError(message='Invalid data for timeline type: ({}).'.format(value))
 
     def to_primitive(self, value, context = None):
         if not value:
@@ -748,6 +720,8 @@ class TimelineType(MondayComplexType):
     def validate_timeline(self, value):
         if type(value) is not self.native_type:
             raise ValidationError('Value is not a valid timeline type: ({}).'.format(value))
+        if value.from_date > value.to_date:
+            raise ValidationError('Start date cannot be after end date.')
 
     
 class WeekType(MondayComplexType):
@@ -841,12 +815,3 @@ class WeekType(MondayComplexType):
             if new_week[k] != orig_week[k]:
                 return True
         return False
-
-
-class MondayTypeError(Exception):
-    def __init__(self, message: str = None, messages: dict = None, error_code: str = None):
-        self.error_code = error_code
-        if message:
-            super().__init__(message)
-        elif messages:
-            super().__init__(messages)
