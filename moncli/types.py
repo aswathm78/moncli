@@ -339,7 +339,10 @@ class ItemLinkType(MondayComplexType):
 
     @property
     def multiple_values(self):
-        return self.metadata['allowMultipleValues']
+        try:
+            return self.metadata['allowMultipleItems']
+        except: 
+            return True
 
     def validate_itemlink(self, value):
         if not self.multiple_values:
@@ -445,7 +448,7 @@ class NumberType(MondaySimpleType):
                 pass
         raise ValidationError('Value is not a valid number type: ({}).'.format(value))
 
-    def _convert(self, value, context):
+    def _convert(self, value):
         _, value, _ = value
         if value == self.null_value:
             return None
@@ -507,7 +510,7 @@ class PeopleType(MondayComplexType):
         def __init__(self, column_values: list = []):
             self._values = []
             for value in column_values:
-                if not isinstance(value, self.PersonOrTeam):
+                if not isinstance(value, PeopleType.PersonOrTeam):
                     raise TypeError(value)
 
             self._values.append(value)
@@ -565,9 +568,9 @@ class PeopleType(MondayComplexType):
             return 0
 
     def validate_people(self, value):
-        if self.max_allowed == 1 and not isinstance(value, list):
-            value = [value]
-        if type(value) != list:
+        if self.max_allowed == 1 and not isinstance(value, self.PeopleCollection):
+            value = self.PeopleCollection([value])
+        if not isinstance(value, self.PeopleCollection):
             raise ValidationError('Value is not a valid list type: ({}).'.format(value))
         if self.max_allowed > 0 and len(value) > self.max_allowed:
             raise ValidationError('Value exceeds the maximum number of allowed people: ({}).'.format(len(value)))
@@ -590,13 +593,13 @@ class PeopleType(MondayComplexType):
             id = v['id']
             kind = PeopleKind[v['kind']]
             people.append(self.PersonOrTeam(id, kind))  
-        if self.max_people_allowed == 1:
+        if self.max_allowed == 1:
             return people[0]
         return self.native_type(people)
 
     def _export(self, value):
-        if not isinstance(value, list):
-            value = [value]
+        if not isinstance(value, self.PeopleCollection):
+            value = self.PeopleCollection([value])
         return {'personsAndTeams': [{'id': v.id, 'kind': v.kind.name} for v in value]}
 
     def _is_person_or_team(self, value):
@@ -745,7 +748,7 @@ class TimelineType(MondayComplexType):
         if value.from_date > value.to_date:
             raise ValidationError('Start date cannot be after end date.')
 
-    def _convert(self, value, context):
+    def _convert(self, value):
         _, value, _ = value
         if value == self.null_value:
             return self.native_type()
@@ -815,7 +818,7 @@ class WeekType(MondayComplexType):
         raise ValidationError('Value is not a valid week type: ({}).'.format(value))
         
 
-    def _convert(self, value, context):
+    def _convert(self, value):
         try:
             week_value = value['week']
             if week_value == '':
@@ -826,7 +829,7 @@ class WeekType(MondayComplexType):
         except:
             return self.native_type()
 
-    def _convert(self, value):
+    def _export(self, value):
         if not value.start or not value.end:
             return self.null_value
         return { 
