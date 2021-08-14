@@ -1,4 +1,4 @@
-import json, pytz, importlib
+import json, pytz, importlib, re
 from datetime import datetime, timedelta
 from enum import Enum
 
@@ -70,6 +70,8 @@ class MondayType(BaseType):
     def to_primitive(self, value, context=None):
         if not self.null_value:
             return None
+        if not value:
+            return self.null_value
         return self._export(value)
 
     def value_changed(self, value):
@@ -265,12 +267,40 @@ class EmailType(MondayComplexType):
 
     class Email():
 
-        def __init__(self, email: str, text: str):
+        def __init__(self, email: str, text: str = None):
             self.email = email
+            if not text:
+                text = email
             self.text = text
 
     native_type = Email
     primitive_type = dict
+
+    def _convert(self, value):
+        _, value, _ = value
+        if value == self.null_value:
+            return self.native_type()
+        return self.native_type(
+            value['email'],
+            value['text'])
+
+    def _export(self, value):
+        if not value.email:
+            return self.null_value
+        return {
+            'email': self.email,
+            'text': self.text
+        }
+
+    def validate_email(self, value):
+        if not isinstance(value, self.Email):
+            raise ValidationError('Expected value of type "Email", received "{}" instead.'.format(value.__class__.__name__))
+        regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        if not value.email and not re.fullmatch(regex, value.email):
+            raise ValidationError('Email.email cannot be null or an invalid email.')
+        
+    def value_changed(self, value):
+        pass
 
 
 class ItemLinkType(MondayComplexType):
@@ -284,28 +314,9 @@ class ItemLinkType(MondayComplexType):
             self.native_type = str
         self.metadata['allowMultipleItems'] = multiple_values 
 
-    def to_native(self, value, context = None):
-        if not self._is_column_value(value):
-            return value
-        value = super().to_native(value, context=context)
-        try:
-            self.original_value = [id['linkedPulseId'] for id in value['linkedPulseIds']]
-        except:
-            self.original_value = []
-        
-        if not self._allow_multiple_values():
-            try:
-                return str(self.original_value[0])
-            except:
-                return None
-        return [str(value) for value in self.original_value]
-
-    def to_primitive(self, value, context = None):
-        if value == None:
-            value = []
-        if type(value) is not list:
-            return {'item_ids': [int(value)]}
-        return {'item_ids': value}
+    @property
+    def multiple_values(self):
+        return self.metadata['allowMultipleValues']
 
     def validate_itemlink(self, value):
         if not self._allow_multiple_values():
@@ -321,7 +332,7 @@ class ItemLinkType(MondayComplexType):
             value = self.null_value
         if self._null_value_change(value):
             return True
-        if not self._allow_multiple_values():
+        if not self.self.multiple_values:
             return value['item_ids'] != self.original_value
         if len(value['item_ids']) != len(self.original_value):
             return False
@@ -330,11 +341,27 @@ class ItemLinkType(MondayComplexType):
                 return False
         return True
 
-    def _allow_multiple_values(self):
+    def _convert(self, value: tuple):
+        _, value, _ = value
         try:
-            return self.metadata['allowMultipleItems']
-        except KeyError:
-            return True
+            ids = [id['linkedPulseId'] for id in value['linkedPulseIds']]
+        except:
+            ids = []
+        
+        if not self.multiple_values:
+            try:
+                return str(ids[0])
+            except:
+                return None
+
+        return [str(value) for value in ids]
+
+    def _export(self, value):
+        if value == None:
+            value = []
+        if type(value) is not list:
+            return {'item_ids': [int(value)]}
+        return {'item_ids': [int(val) for val in value]}
 
 
 class LongTextType(MondayComplexType):
@@ -342,15 +369,13 @@ class LongTextType(MondayComplexType):
     native_type = str
     primitive_type = dict
 
-    def to_native(self, value, context):
-        if not self._is_column_value(value):
-            return value
-        value = super().to_native(value, context=context)
+    def _convert(self, value: tuple):
+        _, value, _ = value
         if value == self.null_value:
             return None
         return value['text']
 
-    def to_primitive(self, value, context = None):
+    def _export(self, value):
         if not value: 
             return self.null_value
         return {'text': value}
