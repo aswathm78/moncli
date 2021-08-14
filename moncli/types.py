@@ -403,34 +403,19 @@ class MirrorType(MondayComplexType):
         self._type = _type
         super().__init__(id=id, title=title, *args, **kwargs)
 
-    def to_native(self, value, context):
-        if not self._is_column_value(value):
-            return value
+    @property
+    def instance(self):
+        _class = getattr(importlib.import_module(self._type.__module__), self._type.__name__)
+        return _class(self.metadata.get('id', None), self.metadata.get('title', None))
 
-        super().to_native(value, context)
-        if self._type is NumberType:
-            value.value = json.dumps(value.text)
-            return self._get_monday_type().to_native(value, context)
-        elif value.value == self.null_value:
-            return self.default
+    def _convert(self, value):
+        return getattr(self.instance, '_convert')(value)
 
-    def to_primitive(self, value, context):
-       self._get_monday_type().to_primitive(value, context)
+    def _export(self, value):
+        return None
 
     def _compare(self, value, other):
         return False
-
-    def _get_monday_type(self):
-        mirrored_type = getattr(importlib.import_module(self._type.__module__), self._type.__name__)
-        try:
-            id = self.metadata['id']
-        except:
-            id = None
-        try:
-            title = self.metadata['title']
-        except:
-            title = None
-        return mirrored_type(id=id, title=title)
 
 
 class NumberType(MondaySimpleType):
