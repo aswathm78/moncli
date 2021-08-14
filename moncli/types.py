@@ -124,12 +124,18 @@ class ComplexTypeValue():
 
 class CheckboxType(MondayComplexType):
 
-    def __init__(self, id: str = None, title: str = None, *args, **kwargs):
-        super().__init__(id=id, title=title, default=False, *args, **kwargs)
-
     native_type = bool
     primitive_type = dict
     allow_casts = (str, int)
+
+    def __init__(self, id: str = None, title: str = None, *args, **kwargs):
+        super().__init__(id=id, title=title, default=False, *args, **kwargs)
+
+    def validate_checkbox(self, value):
+        if isinstance(value, self.allow_casts):
+            value = self._cast(value)
+        if type(value) is not bool:
+            raise ValidationError('Value is not a valid checkbox type: ({}).'.format(value))
 
     def _convert(self, value: tuple):
         _, value, _ = value
@@ -140,12 +146,6 @@ class CheckboxType(MondayComplexType):
 
     def _export(self, value):
         return {'checked': 'true'}
-
-    def validate_checkbox(self, value):
-        if isinstance(value, self.allow_casts):
-            value = self._cast(value)
-        if type(value) is not bool:
-            raise ValidationError('Value is not a valid checkbox type: ({}).'.format(value))
 
 
 class CountryType(MondayComplexType):
@@ -190,6 +190,10 @@ class DateType(MondayComplexType):
     native_type = datetime
     primitive_type = dict
 
+    def validate_date(self, value):
+        if not isinstance(value, self.native_type):
+            raise ValidationError('Invalid datetime type.')
+
     def _convert(self, value: tuple):
         _, value, _ = value
         try:
@@ -222,10 +226,6 @@ class DateType(MondayComplexType):
             'date': date,
             'time': time
         }
-
-    def validate_date(self, value):
-        if not isinstance(value, self.native_type):
-            raise ValidationError('Invalid datetime type.')
 
 
 class DropdownType(MondayComplexType):
@@ -280,7 +280,7 @@ class DropdownType(MondayComplexType):
 
 class EmailType(MondayComplexType):
 
-    class Email():
+    class Email(ComplexTypeValue):
 
         def __init__(self, email: str, text: str = None):
             self.email = email
@@ -298,9 +298,6 @@ class EmailType(MondayComplexType):
         if value.email and not re.fullmatch(regex, value.email):
             raise ValidationError('Email.email cannot be null or an invalid email.')
         
-    def value_changed(self, value):
-        pass
-
     def _convert(self, value):
         _, value, _ = value
         if value == self.null_value:

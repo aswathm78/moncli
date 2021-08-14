@@ -40,7 +40,7 @@ class MondayModel(Model):
             self.name = raw_data.pop('name', None)
         
         else:
-            raise MondayModelError('Input item or raw data is required.')
+            raise TypeError('Input item or raw data is required.')
                 
         super(MondayModel, self).__init__(raw_data=raw_data)
         
@@ -91,24 +91,24 @@ class MondayModel(Model):
         try:
             field_obj = self._fields[field]
         except KeyError:
-            raise MondayModelError('Model does not contain field: ({}).'.format(field))
+            raise KeyError('Model does not contain field: ({}).'.format(field))
         try:
             return field_obj.metadata[key]
         except KeyError:
-            raise MondayModelError('Model field does not contain metadata key: ({}).'.format(key))
+            raise KeyError('Model field does not contain metadata key: ({}).'.format(key))
         
 
     def save(self, group: Group = None):
         if not self._item and not self._board:
-            raise MondayModelError('Unable to save model without monday.com item/board information.')
+            raise TypeError('Unable to save model without monday.com item/board information.')
 
         if self._board and not self.name:
-            raise MondayModelError('Unable to save new model as item without a name.')
+            raise TypeError('Unable to save new model as item without a name.')
         
         try:
             self.validate()
         except DataError as ex:
-            raise MondayModelError(ex.messages)
+            raise ex
 
         column_values = self.to_primitive(diff_only=True)
         if self._item:
@@ -125,8 +125,3 @@ class MondayModel(Model):
 
     def __repr__(self):
         return str(self.to_primitive())
-
-
-class MondayModelError(Exception):
-    def __init__(self, message):
-        super(MondayModelError, self).__init__(message)
