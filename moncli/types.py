@@ -21,6 +21,7 @@ class MondayType(BaseType):
 
     null_value = None
     allow_casts = ()
+    native_default = None
 
     def __init__(self, id: str = None, title: str = None, *args, **kwargs):
         self.original_value = None
@@ -33,7 +34,12 @@ class MondayType(BaseType):
         if title:
             metadata['title'] = title
 
-        super(MondayType, self).__init__(*args, metadata=metadata, **kwargs)
+        # Handle defaults
+        default = kwargs.pop('default', None)
+        if not default:
+            default = self.native_default
+
+        super(MondayType, self).__init__(*args, default=default, metadata=metadata, **kwargs)
 
     @property
     def changed_at(self):
@@ -127,6 +133,7 @@ class CheckboxType(MondayComplexType):
     native_type = bool
     primitive_type = dict
     allow_casts = (str, int)
+    native_default = False
 
     def __init__(self, id: str = None, title: str = None, *args, **kwargs):
         super().__init__(id=id, title=title, default=False, *args, **kwargs)
@@ -152,12 +159,13 @@ class CountryType(MondayComplexType):
 
     class Country(ComplexTypeValue):
 
-        def __init__(self, name, code):
+        def __init__(self, name: str = None, code: str = None):
             self.name = name
             self.code = code
 
     native_type = Country
     primitive_type = dict
+    native_default = native_type()
 
     def validate_country(self, value):
         if value.code:
@@ -233,12 +241,13 @@ class DropdownType(MondayComplexType):
     native_type = list
     primitive_type = dict
     allow_casts = (str, Enum)
+    native_default = []
 
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
         if data_mapping:
             self._data_mapping = data_mapping
             self.choices = data_mapping.values()
-        super(DropdownType, self).__init__(id=id, title=title, *args, default=[], **kwargs)
+        super(DropdownType, self).__init__(id=id, title=title, *args, **kwargs)
 
     def validate_dropdown(self, value):
         if self._data_mapping:
@@ -281,7 +290,7 @@ class EmailType(MondayComplexType):
 
     class Email(ComplexTypeValue):
 
-        def __init__(self, email: str, text: str = None):
+        def __init__(self, email: str = None, text: str = None):
             self.email = email
             if not text:
                 text = email
@@ -289,6 +298,7 @@ class EmailType(MondayComplexType):
 
     native_type = Email
     primitive_type = dict
+    native_default = native_type()
 
     def validate_email(self, value):
         if not isinstance(value, self.Email):
@@ -318,11 +328,13 @@ class ItemLinkType(MondayComplexType):
 
     native_type = list
     primitive_type = dict
+    native_default = []
 
     def __init__(self, id: str = None, title: str = None, multiple_values: bool = True, *args, **kwargs):
         super().__init__(id=id, title=title, *args, **kwargs)
         if not multiple_values:
             self.native_type = str
+            self.native_default = None
         self.metadata['allowMultipleItems'] = multiple_values 
 
     @property
@@ -633,8 +645,9 @@ class StatusType(MondayComplexType):
 
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
         if data_mapping:
-            self.native_type = data_mapping.values()[0].__class__
-            self.choices = data_mapping.values()
+            values = list(data_mapping.values())
+            self.native_type = values[0].__class__
+            self.choices = values
         self._data_mapping = data_mapping
         
         super(StatusType, self).__init__(id=id, title=title, *args, **kwargs)
