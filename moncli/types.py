@@ -674,6 +674,9 @@ class SubitemsType(ItemLinkType):
         self.type = _type
         super(SubitemsType, self).__init__(id, title, *args, default=[], **kwargs)
 
+    def validate_subitems(self, value):
+        return # Nothing to validate here...
+
     def _convert(self, value):
         item_ids = super()._convert(value)
         if not item_ids:
@@ -682,9 +685,6 @@ class SubitemsType(ItemLinkType):
         items = client.get_items(ids=item_ids, get_column_values=True)
         module = importlib.import_module(self.type.__module__)
         return [getattr(module, self.type.__name__)(item) for item in items]
-
-    def validate_subitems(self, value):
-        return # Nothing to validate here...
 
     def _compare(self, value, other):
         return False # Nothing to compare here...
@@ -696,20 +696,17 @@ class TextType(MondaySimpleType):
     primitive_type = str
     allow_casts = (int, float, bytes)
 
-    def to_native(self, value, context = None):
-        if not self._is_column_value(value):
-            return value
-        return super(TextType, self).to_native(value, context)
-
-    def to_primitive(self, value, context = None):
-        if not value:
-            return ''
-        return value
-
     def validate_text(self, value):
-        if type(value) is not str:
-            raise ValidationError('Value is not a valid text type: ({}).'.format(value))
+        if isinstance(value, str):
+            return
+        if isinstance(value, self.allow_casts):
+            return 
+        raise ValidationError('Value is not a valid text type: ({}).'.format(value))
 
+    def _convert(self, value):
+        if value == self.null_value:
+            return None
+        return value
 
 
 class TimelineType(MondayComplexType):
