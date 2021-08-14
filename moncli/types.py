@@ -492,48 +492,101 @@ class PeopleType(MondayComplexType):
         def __init__(self, id: str):
             super().__init__(id, PeopleKind.team)
 
-    native_type = list
+    class PeopleCollection():
+        def __init__(self, column_values: list = []):
+            self._values = []
+            for value in column_values:
+                if not isinstance(value, self.PersonOrTeam):
+                    raise TypeError(value)
+
+            self._values.append(value)
+
+        def __len__(self):
+            return len(self._values)
+
+        def __getitem__(self, index):
+            try:
+                i = self._get_index(index)
+                return self._values[i]
+            except:
+                raise KeyError(index)
+
+        def __setitem__(self, index, value):
+            try:
+                i = self._get_index(index)
+                self._values[i] = value
+            except:
+                raise KeyError(index)
+
+        def __iter__(self):
+            for value in self._values:
+                yield value
+
+        def __repr__(self):
+            return str([value.to_primitive() for value in self._values])
+
+        def insert(self, index, value):
+            i = self._get_index(index)
+            self._values.insert(i, value)
+
+        def append(self, value):
+            self.insert(len(self._values), value)
+
+        def _get_index(self, index):
+            if isinstance(index, int):
+                return index
+            
+            if not isinstance(index, str):
+                raise TypeError(index)
+
+            try:
+                [people for people in self._values if people.id == index][0]
+            except: 
+                raise KeyError(index)
+    
     primitive_type = dict
 
-    def to_native(self, value, context):
-        result = []
-        if not self._is_column_value(value):
-            return value
-        value = super(PeopleType, self).to_native(value, context=context)
-        # Custom rules for max people allowed setting.
+    @property
+    def max_allowed(self):
         try:
-            max_people_allowed = int(self.metadata['max_people_allowed'])
+            return int(self.metadata['max_people_allowed'])
         except:
-            max_people_allowed = 0
-        self.metadata['max_people_allowed'] = max_people_allowed
-        if value == self.null_value:
-            return result
+            return 0
 
-        for v in value['personsAndTeams']:
-            kind = PeopleKind[v['kind']]
-            result.append(self.PersonOrTeam(v['id'], kind))
-        if max_people_allowed == 1:
-            return result[0]
-        return result
-
-    def to_primitive(self, value, context = None):
-        if not value:
-            return self.null_value
-        if type(value) is not list:
-            value = [value]
-        return {'personsAndTeams': [{'id': v.id, 'kind': v.kind.name} for v in value]}
-
-    def validate_people(self, value, context):
-        max_people_allowed = self.metadata['max_people_allowed']
-        if max_people_allowed == 1 and type(value) != list:
+    def validate_people(self, value):
+        if self.max_allowed == 1 and not isinstance(value, list):
             value = [value]
         if type(value) != list:
             raise ValidationError('Value is not a valid list type: ({}).'.format(value))
-        if max_people_allowed > 0 and len(value) > max_people_allowed:
+        if self.max_allowed > 0 and len(value) > self.max_allowed:
             raise ValidationError('Value exceeds the maximum number of allowed people: ({}).'.format(len(value)))
         for v in value:
             if not self._is_person_or_team(v):
                 raise ValidationError('Value contains a record with an invalid type: ({})'.format(v.__class__.__name__))
+
+    def _convert(self, value):
+        if self.max_allowed != 1:
+            self.native_type = self.PeopleCollection
+        else:
+            self.native_type = self.PersonOrTeam
+        
+        _, value, _ = value
+        if value == self.null_value:
+            return self.native_type()        
+
+        people = []
+        for v in value['personsAndTeams']:
+            id = v['id']
+            kind = PeopleKind[v['kind']]
+            people.append(self.PersonOrTeam(id, kind))  
+        if self.max_people_allowed == 1:
+            return people[0]
+        return self.native_type(people)
+
+    def _export(self, value):
+        if not isinstance(value, list):
+            value = [value]
+        return {'personsAndTeams': [{'id': v.id, 'kind': v.kind.name} for v in value]}
 
     def _is_person_or_team(self, value):
         return isinstance(value, self.PersonOrTeam) or issubclass(type(value), self.PersonOrTeam)
