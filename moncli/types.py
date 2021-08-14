@@ -369,6 +369,15 @@ class LongTextType(MondayComplexType):
     native_type = str
     primitive_type = dict
 
+    def validate_text(self, value):
+        if type(value) is not str:
+            raise ValidationError('Value is not a valid long text type: ({}).'.format(value))
+
+    def value_changed(self, value):
+        if self._null_value_change(value):
+            return True
+        return self.original_value['text'] != value['text']
+
     def _convert(self, value: tuple):
         _, value, _ = value
         if value == self.null_value:
@@ -379,15 +388,6 @@ class LongTextType(MondayComplexType):
         if not value: 
             return self.null_value
         return {'text': value}
-
-    def validate_text(self, value):
-        if type(value) is not str:
-            raise ValidationError('Value is not a valid long text type: ({}).'.format(value))
-
-    def value_changed(self, value):
-        if self._null_value_change(value):
-            return True
-        return self.original_value['text'] != value['text']
 
 
 class MirrorType(MondayComplexType):
