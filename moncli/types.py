@@ -726,6 +726,12 @@ class TimelineType(MondayComplexType):
     native_type = Timeline
     primitive_type = dict
 
+    def validate_timeline(self, value):
+        if type(value) is not self.native_type:
+            raise ValidationError('Value is not a valid timeline type: ({}).'.format(value))
+        if value.from_date > value.to_date:
+            raise ValidationError('Start date cannot be after end date.')
+
     def _convert(self, value, context):
         _, value, _ = value
         if value == self.null_value:
@@ -738,21 +744,13 @@ class TimelineType(MondayComplexType):
         except:
             raise ConversionError(message='Invalid data for timeline type: ({}).'.format(value))
 
-    def to_primitive(self, value, context = None):
-        if not value:
-            return self.null_value
+    def _export(self, value):
         return {
             'from': datetime.strftime(value.from_date, DATE_FORMAT),
             'to': datetime.strftime(value.to_date, DATE_FORMAT)
         }
 
-    def validate_timeline(self, value):
-        if type(value) is not self.native_type:
-            raise ValidationError('Value is not a valid timeline type: ({}).'.format(value))
-        if value.from_date > value.to_date:
-            raise ValidationError('Start date cannot be after end date.')
 
-    
 class WeekType(MondayComplexType):
 
     class Week(ComplexTypeValue):
@@ -798,12 +796,13 @@ class WeekType(MondayComplexType):
     native_type = Week
     primitive_type = dict
 
-    def to_native(self, value, context):
+    def validate_week(self, value):
         if isinstance(value, self.native_type):
-            return value
-        if type(value) is dict:
-            return self.native_type(value['start'], value['end'])
-        value = super().to_native(value, context=context)
+            return
+        raise ValidationError('Value is not a valid week type: ({}).'.format(value))
+        
+
+    def _convert(self, value, context):
         try:
             week_value = value['week']
             if week_value == '':
@@ -812,12 +811,11 @@ class WeekType(MondayComplexType):
                 week_value['startDate'], DATE_FORMAT), 
                 datetime.strptime(week_value['startDate'], DATE_FORMAT))
         except:
-            return None
+            return self.native_type()
 
-    def to_primitive(self, value, context = None):
-        if not value:
+    def _convert(self, value):
+        if not value.start or not value.end:
             return self.null_value
-        
         return { 
             'week': {
                 'startDate': datetime.strftime(value.start, DATE_FORMAT),
@@ -825,22 +823,4 @@ class WeekType(MondayComplexType):
             }
         }
 
-    def validate_week(self, value):
-        if type(value) is not self.native_type:
-            raise ValidationError('Value is not a valid week type: ({}).'.format(value))
-        if not value.start:
-            raise ValidationError('Value is mssing a start date: ({}).'.format(value))
-        if not value.end:
-            raise ValidationError('Value is mssing an end date: ({}).'.format(value))
-            
-    def value_changed(self, value):
-        if self._null_value_change(value):
-            return True
-        orig_week = self.original_value['week']
-        new_week = value['week']
-        if orig_week == '' and new_week != orig_week:
-            return True
-        for k in new_week.keys():
-            if new_week[k] != orig_week[k]:
-                return True
-        return False
+    
