@@ -260,7 +260,6 @@ class DropdownType(MondayComplexType):
             return self.default
 
         if not self._data_mapping:
-            self.choices = labels
             return labels
         try:
             return [self._data_mapping[text] for text in labels]
@@ -635,29 +634,10 @@ class StatusType(MondayComplexType):
     def __init__(self, id: str = None, title: str = None, data_mapping: dict = None, *args, **kwargs):
         if data_mapping:
             self.native_type = data_mapping.values()[0].__class__
+            self.choices = data_mapping.values()
         self._data_mapping = data_mapping
         
         super(StatusType, self).__init__(id=id, title=title, *args, **kwargs)
-
-    def to_native(self, value, context = None):
-        if not self._is_column_value(value):
-            return value
-        super(StatusType, self).to_native(value, context)
-        if not self._data_mapping:
-            return value.text
-        try:
-            return self._data_mapping[value.text]
-        except:
-            return None
-
-    def to_primitive(self, value, context = None):
-        if self._data_mapping:
-            reverse = {v: k for k, v in self._data_mapping.items()}
-            value = reverse[value]
-        for k, v in self.metadata['labels'].items():
-            if value == v:
-                return {'index': int(k)}
-        return self.original_value
 
     def validate_status(self, value):
         if self._data_mapping:
@@ -665,6 +645,23 @@ class StatusType(MondayComplexType):
             value = reverse[value]
         if value not in self.metadata['labels'].values():
             raise ValidationError('Unable to find index for status label: ({}).'.format(value))
+
+    def _convert(self, value):
+        text, _, _ = value
+        if not self._data_mapping:
+            return text
+        try:
+            return self._data_mapping[text]
+        except:
+            return None
+
+    def _export(self, value):
+        if self._data_mapping:
+            reverse = {v: k for k, v in self._data_mapping.items()}
+            value = reverse[value]
+        for k, v in self.metadata['labels'].items():
+            if value == v:
+                return {'index': int(k)}
 
 
 class SubitemsType(ItemLinkType):
