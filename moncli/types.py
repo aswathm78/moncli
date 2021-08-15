@@ -512,8 +512,7 @@ class PeopleType(MondayComplexType):
             for value in column_values:
                 if not isinstance(value, PeopleType.PersonOrTeam):
                     raise TypeError(value)
-
-            self._values.append(value)
+                self._values.append(value)
 
         def __len__(self):
             return len(self._values)
@@ -558,7 +557,15 @@ class PeopleType(MondayComplexType):
             except: 
                 raise KeyError(index)
     
+    native_type = PeopleCollection
     primitive_type = dict
+    allow_casts = (list, dict)
+    native_default = native_type()
+
+    def __init__(self, id: str = None, title: str = None, max_allowed: int = 0, *args, **kwargs):
+        super().__init__(id, title, *args, **kwargs)
+        self.metadata['max_people_allowed'] = max_allowed        
+        self._set_native_type()
 
     @property
     def max_allowed(self):
@@ -578,12 +585,24 @@ class PeopleType(MondayComplexType):
             if not self._is_person_or_team(v):
                 raise ValidationError('Value contains a record with an invalid type: ({})'.format(v.__class__.__name__))
 
+    def _cast(self, value):
+        if self.max_allowed == 1:
+            if isinstance(value, list):
+                return ConversionError('Cannot create single Person or Team record from list data. ({})'.format(value))
+            try:
+                return self.native_type(value['id'], value['kind'])
+            except:
+                return ConversionError('Cannot create single Person or Team record from input data. ({})'.format(value))
+
+        if isinstance(value, dict):
+            return ConversionError('Cannot create Person or Team record list from dict data. ({})'.format(value))
+        try:
+            return self.native_type([self.PersonOrTeam(value['id'], value['kind'])])
+        except:
+            return ConversionError('Cannot create Person or Team record list from input data. ({})'.format(value))
+
     def _convert(self, value):
-        if self.max_allowed != 1:
-            self.native_type = self.PeopleCollection
-        else:
-            self.native_type = self.PersonOrTeam
-        
+        self._set_native_type()
         _, value, _ = value
         if value == self.null_value:
             return self.native_type()        
@@ -601,6 +620,11 @@ class PeopleType(MondayComplexType):
         if not isinstance(value, self.PeopleCollection):
             value = self.PeopleCollection([value])
         return {'personsAndTeams': [{'id': v.id, 'kind': v.kind.name} for v in value]}
+
+    def _set_native_type(self):
+        if self.max_allowed == 1:
+            self.native_type = self.PersonOrTeam
+            self.native_default = None
 
     def _is_person_or_team(self, value):
         return isinstance(value, self.PersonOrTeam) or issubclass(type(value), self.PersonOrTeam)
@@ -621,6 +645,7 @@ class PhoneType(MondayComplexType):
 
     native_type = Phone
     primitive_type = dict
+    native_default = native_type()
 
     def validate_phone(self, value):
         country = countries.get(alpha_2=value.country)
@@ -720,6 +745,7 @@ class TextType(MondaySimpleType):
         raise ValidationError('Value is not a valid text type: ({}).'.format(value))
 
     def _convert(self, value):
+        _, value, _ = value
         if value == self.null_value:
             return None
         return value
@@ -741,12 +767,24 @@ class TimelineType(MondayComplexType):
 
     native_type = Timeline
     primitive_type = dict
+    native_default = native_type()
+    allow_casts = (dict,)
 
     def validate_timeline(self, value):
         if type(value) is not self.native_type:
             raise ValidationError('Value is not a valid timeline type: ({}).'.format(value))
         if value.from_date > value.to_date:
             raise ValidationError('Start date cannot be after end date.')
+
+    def _cast(self, value):
+        if not value:
+            return self.native_default
+        try:
+            return self.native_type(
+                value['from'],
+                value['to'])
+        except:
+            raise ConversionError(message='Invalid data for timeline type: ({}).'.format(value))
 
     def _convert(self, value):
         _, value, _ = value
@@ -816,7 +854,6 @@ class WeekType(MondayComplexType):
         if isinstance(value, self.native_type):
             return
         raise ValidationError('Value is not a valid week type: ({}).'.format(value))
-        
 
     def _convert(self, value):
         try:
