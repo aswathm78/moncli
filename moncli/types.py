@@ -331,10 +331,10 @@ class ItemLinkType(MondayComplexType):
     native_default = []
 
     def __init__(self, id: str = None, title: str = None, multiple_values: bool = True, *args, **kwargs):
-        super().__init__(id=id, title=title, *args, **kwargs)
         if not multiple_values:
             self.native_type = str
             self.native_default = None
+        super().__init__(id=id, title=title, *args, **kwargs)
         self.metadata['allowMultipleItems'] = multiple_values 
 
     @property

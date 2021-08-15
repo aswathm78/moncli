@@ -72,6 +72,9 @@ class MondayModel(Model):
     def item(self):
         return self._item
 
+    def __repr__(self):
+        return str(self.__dict__)
+
     def to_primitive(self, diff_only = False, role = None, app_data = None, **kwargs):        
         base_dict = super().to_primitive(role=role, app_data=app_data, **kwargs)
         result = {}
@@ -98,7 +101,7 @@ class MondayModel(Model):
             raise KeyError('Model field does not contain metadata key: ({}).'.format(key))
         
 
-    def save(self, group: Group = None):
+    def save(self, group: Group = None, archive: bool = False):
         if not self._item and not self._board:
             raise TypeError('Unable to save model without monday.com item/board information.')
 
@@ -112,16 +115,15 @@ class MondayModel(Model):
 
         column_values = self.to_primitive(diff_only=True)
         if self._item:
-            self._item = self._item.change_multiple_column_values(column_values, get_column_values=True)
+            if column_values:
+                self._item = self._item.change_multiple_column_values(column_values, get_column_values=True)
             if group:
                 self._item = self._item.move_to_group(group.id, get_column_values=True)
-        elif self._board:
+        elif self._board and column_values:
             if group:
                 self._item = self._board.add_item(self.name, get_column_values=True, group_id=group.id, column_values=column_values)
             else:
                 self._item = self._board.add_item(self.name, get_column_values=True, column_values=column_values)
+        if archive:
+            self._item.archive()
         return getattr(importlib.import_module(self._module), self._class)(self._item)
-
-
-    def __repr__(self):
-        return str(self.to_primitive())
