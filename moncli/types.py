@@ -8,7 +8,7 @@ from schematics.exceptions import ConversionError, ValidationError
 from schematics.types import BaseType
 
 from . import client
-from .entities import column_value as cv
+from .entities import BaseCollection, ColumnValue
 from .enums import PeopleKind
 from .models import MondayModel
 
@@ -55,7 +55,7 @@ class MondayType(BaseType):
         if not value:
             return value
 
-        if not isinstance(value, cv.ColumnValue):
+        if not isinstance(value, ColumnValue):
             if self.allow_casts and isinstance(value, self.allow_casts):
                 return self._cast(value)
             return value
@@ -346,10 +346,10 @@ class ItemLinkType(MondayComplexType):
 
     def validate_itemlink(self, value):
         if not self.multiple_values:
-            if value != None and type(value) == list:
+            if value != None and isinstance(value, list):
                 raise ValidationError('Multiple items for this item link property are not supported.')
         else:
-            if value and type(value) != list:
+            if value and not isinstance(value, (list, BaseCollection)):
                 raise ValidationError('Item link property requires a list value for multiple items.')
 
     def _convert(self, value: tuple):
@@ -597,7 +597,7 @@ class PeopleType(MondayComplexType):
         if isinstance(value, dict):
             return ConversionError('Cannot create Person or Team record list from dict data. ({})'.format(value))
         try:
-            return self.native_type([self.PersonOrTeam(value['id'], value['kind'])])
+            return self.native_type([self.PersonOrTeam(value['id'], value['kind']) for value in value])
         except:
             return ConversionError('Cannot create Person or Team record list from input data. ({})'.format(value))
 
@@ -708,10 +708,15 @@ class StatusType(MondayComplexType):
 class SubitemsType(ItemLinkType):
 
     null_value = None
+    native_type = list
 
-    def __init__(self, _type: MondayModel, id: str = None, title: str = None, *args, **kwargs):
+    def __init__(self, _type: MondayModel, id: str = None, title: str = None, as_collection: type = None, *args, **kwargs):
         if not issubclass(_type, MondayModel):
             raise TypeError('The input class type is not a Monday Model: ({})'.format(_type.__name__))
+        if as_collection: 
+            if not issubclass(as_collection, BaseCollection):
+                raise TypeError('The input collection type is not a BaseCollection type: ({}).'.format(as_collection.__name__))
+            self.native_type = as_collection
         self.type = _type
         super(SubitemsType, self).__init__(id, title, *args, default=[], **kwargs)
 
@@ -721,11 +726,11 @@ class SubitemsType(ItemLinkType):
     def _convert(self, value):
         item_ids = super()._convert(value)
         if not item_ids:
-            return self.default
+            return self.native_type()
 
         items = client.get_items(ids=item_ids, get_column_values=True)
         module = importlib.import_module(self.type.__module__)
-        return [getattr(module, self.type.__name__)(item) for item in items]
+        return self.native_type([getattr(module, self.type.__name__)(item) for item in items])
 
     def _compare(self, value, other):
         return False # Nothing to compare here...
@@ -773,6 +778,8 @@ class TimelineType(MondayComplexType):
     def validate_timeline(self, value):
         if type(value) is not self.native_type:
             raise ValidationError('Value is not a valid timeline type: ({}).'.format(value))
+        if value == self.native_default:
+            return
         if value.from_date > value.to_date:
             raise ValidationError('Start date cannot be after end date.')
 
@@ -799,6 +806,8 @@ class TimelineType(MondayComplexType):
             raise ConversionError(message='Invalid data for timeline type: ({}).'.format(value))
 
     def _export(self, value):
+        if value == self.native_default:
+            return self.null_value
         return {
             'from': datetime.strftime(value.from_date, DATE_FORMAT),
             'to': datetime.strftime(value.to_date, DATE_FORMAT)
@@ -849,11 +858,20 @@ class WeekType(MondayComplexType):
 
     native_type = Week
     primitive_type = dict
+    allow_casts = (dict,)
 
     def validate_week(self, value):
         if isinstance(value, self.native_type):
             return
         raise ValidationError('Value is not a valid week type: ({}).'.format(value))
+
+    def _cast(self, value):
+        try:
+            return self.native_type(
+                value['start'],
+                value['end'])
+        except:
+            raise ConversionError('Unable to cast input dict as Week type. ({}).'.format(value))
 
     def _convert(self, value):
         try:
