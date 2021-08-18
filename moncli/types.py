@@ -92,7 +92,9 @@ class MondayType(BaseType):
 
     def _extract_metadata(self, value):
         try:
-            self.metadata['changed_at'] = value.pop('changed_at', None)
+            changed_at = value.pop('changed_at', None)
+            if changed_at:
+                self.metadata['changed_at'] = datetime.strptime(changed_at, ZULU_FORMAT)
         except:
             pass
 
@@ -394,11 +396,6 @@ class LongTextType(MondayComplexType):
         if type(value) is not str:
             raise ValidationError('Value is not a valid long text type: ({}).'.format(value))
 
-    def value_changed(self, value):
-        if self._null_value_change(value):
-            return True
-        return self.original_value['text'] != value['text']
-
     def _convert(self, value: tuple):
         _, value, _ = value
         if value == self.null_value:
@@ -484,9 +481,9 @@ class NumberType(MondaySimpleType):
 
 class PeopleType(MondayComplexType):
 
-    class PersonOrTeam():
+    class PersonOrTeam(ComplexTypeValue):
 
-        def __init__(self, id: str, kind: PeopleKind):
+        def __init__(self, id: str = None, kind: PeopleKind = None):
             self.id = id
             self.kind = kind
 
@@ -618,13 +615,18 @@ class PeopleType(MondayComplexType):
 
     def _export(self, value):
         if not isinstance(value, self.PeopleCollection):
+            if value == self.native_default:
+                return self.null_value
             value = self.PeopleCollection([value])
-        return {'personsAndTeams': [{'id': v.id, 'kind': v.kind.name} for v in value]}
+        persons_and_teams = [{'id': v.id, 'kind': v.kind.name} for v in value if value != self.PersonOrTeam()]
+        if not persons_and_teams:
+            return self.null_value
+        return {'personsAndTeams': persons_and_teams}
 
     def _set_native_type(self):
         if self.max_allowed == 1:
             self.native_type = self.PersonOrTeam
-            self.native_default = None
+            self.native_default = self.native_type()
 
     def _is_person_or_team(self, value):
         return isinstance(value, self.PersonOrTeam) or issubclass(type(value), self.PersonOrTeam)
@@ -874,6 +876,7 @@ class WeekType(MondayComplexType):
             raise ConversionError('Unable to cast input dict as Week type. ({}).'.format(value))
 
     def _convert(self, value):
+        _, value, _ = value
         try:
             week_value = value['week']
             if week_value == '':
