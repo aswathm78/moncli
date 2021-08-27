@@ -13,7 +13,7 @@ ADD_SUBSCRIBERS_TO_BOARD = 'add_subscribers_to_board'
 DELETE_SUBSCRIBERS_FROM_BOARD = 'delete_subscribers_from_board'
 # Columns
 CREATE_COLUMN = 'create_column'
-CHANGE_COLUMN_VALUE = 'change_column_value'
+CHANGE_COLUMN_VALUE = 'change_simple_column_value'
 CHANGE_MULTIPLE_COLUMN_VALUES = 'change_multiple_column_values'
 # Groups
 DUPLICATE_GROUP = 'duplicate_group'
